@@ -1,16 +1,14 @@
 // App.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MotiView } from 'moti';
 import { LinearGradient } from 'expo-linear-gradient';
 import Paho from 'paho-mqtt';
 
 // Components
-import { StatusIndicator } from '../components/StatusIndicator';
-import { ConnectionStatus } from '../components/ConnectionStatus';
-import { Header } from '../components/Header';
-import { LastDetectionTime } from '../components/LastDetectionTime';
+import { DashboardGrid } from '../components/DashboardGrid';
 import { AlertModal } from '../components/AlertModal';
 
 // MQTT Configuration
@@ -102,7 +100,7 @@ export default function App() {
   const handleReconnect = useCallback(() => {
     if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       setReconnectAttempts(prev => prev + 1);
-      setTimeout(setupMQTT, 5000 * (reconnectAttempts + 1)); // Exponential backoff
+      setTimeout(setupMQTT, 5000 * (reconnectAttempts + 1));
     } else {
       Alert.alert(
         'การเชื่อมต่อล้มเหลว',
@@ -248,64 +246,79 @@ export default function App() {
       colors={['#0f172a', '#1e293b']}
       className="flex-1"
     >
-      <MotiView 
-        from={{ opacity: 0, translateY: 20 }}
-        animate={{ opacity: 1, translateY: 0 }}
-        transition={{ type: 'timing', duration: 500 }}
-        className="flex-1 p-5 pt-16"
-      >
-        <ConnectionStatus isConnected={isConnected} />
-
-        <MotiView
-          from={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: 'timing', duration: 500, delay: 200 }}
-          className="bg-white/10 rounded-3xl p-6 backdrop-blur-xl shadow-2xl"
+      <View className="flex-1 pt-12">
+        {/* Connection Status Bar */}
+        <MotiView 
+          animate={{ 
+            backgroundColor: isConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+          }}
+          transition={{ type: 'timing', duration: 300 }}
+          className="px-4 py-3 mx-4 mb-4 rounded-xl flex-row items-center justify-center"
         >
-          <Header isFlameDetected={isFlameDetected} />
-
-          <MotiView 
-            from={{ opacity: 0, translateY: 20 }}
-            animate={{ opacity: 1, translateY: 0 }}
-            transition={{ type: 'timing', duration: 500, delay: 400 }}
-            className="flex-row justify-around mt-2 mb-6"
-          >
-            <StatusIndicator
-              title="สถานะเซนเซอร์"
-              isActive={isFlameDetected}
-              activeText="ตรวจพบเปลวไฟ!"
-              inactiveText="ปกติ"
-              icon="fire"
-            />
-
-            <StatusIndicator
-              title="สถานะปั๊มน้ำ"
-              isActive={isPumpActive}
-              activeText="กำลังทำงาน"
-              inactiveText="หยุดทำงาน"
-              icon="water-pump"
-            />
-          </MotiView>
-
-          {lastDetectionTime && (
-            <MotiView
-              from={{ opacity: 0, translateY: 10 }}
-              animate={{ opacity: 1, translateY: 0 }}
-              transition={{ type: 'timing', duration: 300 }}
-            >
-              <LastDetectionTime timestamp={lastDetectionTime} />
-            </MotiView>
-          )}
+          <View className={`w-2 h-2 rounded-full mr-2 ${
+            isConnected ? 'bg-emerald-500' : 'bg-red-500'
+          }`} />
+          <Text className={`text-sm font-medium ${
+            isConnected ? 'text-emerald-500' : 'text-red-500'
+          }`}>
+            {isConnected ? 'เชื่อมต่อกับระบบแล้ว' : 'ไม่มีการเชื่อมต่อ'}
+          </Text>
         </MotiView>
 
+        {/* Main Content */}
+        <DashboardGrid 
+          isFlameDetected={isFlameDetected}
+          isPumpActive={isPumpActive}
+        />
+
+        {/* Last Detection Time */}
+        {lastDetectionTime && (
+          <MotiView
+            from={{ opacity: 0, translateY: 20 }}
+            animate={{ opacity: 1, translateY: 0 }}
+            transition={{ type: 'timing', duration: 300 }}
+            className="mx-4 mt-6 bg-white/10 rounded-2xl p-5"
+          >
+            <View className="flex-row items-center mb-2">
+              <MaterialCommunityIcons 
+                name="clock-outline" 
+                size={20} 
+                color="rgba(255,255,255,0.7)" 
+              />
+              <Text className="text-white/70 text-sm ml-2 font-medium">
+                ตรวจพบครั้งล่าสุด
+              </Text>
+            </View>
+            <Text className="text-white text-lg font-semibold">
+              {lastDetectionTime}
+            </Text>
+          </MotiView>
+        )}
+
+        {/* Test Button */}
         <MotiView
           from={{ opacity: 0, translateY: 20 }}
           animate={{ opacity: 1, translateY: 0 }}
           transition={{ type: 'timing', duration: 500, delay: 600 }}
+          className="px-4 mt-6"
         >
-
+          <TouchableOpacity 
+            onPress={handleTestSystem}
+            className="bg-white/10 rounded-2xl p-4 items-center"
+          >
+            <View className="flex-row items-center">
+              <MaterialCommunityIcons 
+                name="shield-check" 
+                size={24} 
+                color="white" 
+              />
+              <Text className="text-white text-base font-semibold ml-2">
+                ทดสอบระบบ
+              </Text>
+            </View>
+          </TouchableOpacity>
         </MotiView>
-      </MotiView>
+      </View>
 
       <AlertModal
         visible={showAlert}
