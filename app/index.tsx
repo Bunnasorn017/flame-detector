@@ -1,8 +1,28 @@
+// App.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MotiView } from 'moti';
+import { LinearGradient } from 'expo-linear-gradient';
 import Paho from 'paho-mqtt';
+
+// Components
+import { StatusIndicator } from '../components/StatusIndicator';
+import { ConnectionStatus } from '../components/ConnectionStatus';
+import { Header } from '../components/Header';
+import { LastDetectionTime } from '../components/LastDetectionTime';
+import { AlertModal } from '../components/AlertModal';
+
+// MQTT Configuration
+const MQTT_CONFIG = {
+  host: 'broker.hivemq.com',
+  port: 8000,
+  clientId: `flame_detector_${Math.random().toString(16).substr(2, 8)}`,
+  topics: {
+    status: 'flame_detector/status',
+    pumpControl: 'flame_detector/pump/control'
+  }
+};
 
 // ตั้งค่าการแจ้งเตือน
 try {
@@ -18,38 +38,15 @@ try {
   Alert.alert('การตั้งค่าแจ้งเตือนล้มเหลว', 'ไม่สามารถตั้งค่าการแจ้งเตือนได้');
 }
 
-// MQTT Configuration
-const MQTT_CONFIG = {
-  host: 'broker.hivemq.com',
-  port: 8000,
-  clientId: `flame_detector_${Math.random().toString(16).substr(2, 8)}`,
-  topics: {
-    status: 'flame_detector/status',
-    pumpControl: 'flame_detector/pump/control'
-  }
-};
-
-const StatusIndicator = ({ title, isActive, activeText, inactiveText, icon }:any) => (
-  <View className="items-center p-4">
-    <MaterialCommunityIcons 
-      name={icon} 
-      size={30} 
-      color={isActive ? "#ff4444" : "#666"}
-    />
-    <Text className="text-base font-medium mt-2 text-gray-600">{title}</Text>
-    <Text className={`text-sm mt-1 font-medium ${isActive ? 'text-red-500' : 'text-green-600'}`}>
-      {isActive ? activeText : inactiveText}
-    </Text>
-  </View>
-);
-
 export default function App() {
   const [isFlameDetected, setIsFlameDetected] = useState(false);
   const [isPumpActive, setIsPumpActive] = useState(false);
-  const [lastDetectionTime, setLastDetectionTime] = useState(null);
-  const [mqttClient, setMqttClient] = useState(null);
+  const [lastDetectionTime, setLastDetectionTime] = useState<string | null>(null);
+  const [mqttClient, setMqttClient] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [showAlert, setShowAlert] = useState(false);
+  
   const MAX_RECONNECT_ATTEMPTS = 5;
 
   // MQTT Connection Setup
@@ -71,22 +68,21 @@ export default function App() {
             setIsConnected(true);
             setReconnectAttempts(0);
             
-            // Subscribe to topics with error handling
             client.subscribe(MQTT_CONFIG.topics.status, {
               onSuccess: () => console.log('Subscribed to status topic'),
-              onFailure: (err:unknown) => console.error('Failed to subscribe to status topic:', err)
+              onFailure: (err: unknown) => console.error('Failed to subscribe to status topic:', err)
             });
             
             client.subscribe(MQTT_CONFIG.topics.pumpControl, {
               onSuccess: () => console.log('Subscribed to pump control topic'),
-              onFailure: (err:unknown) => console.error('Failed to subscribe to pump control topic:', err)
+              onFailure: (err: unknown) => console.error('Failed to subscribe to pump control topic:', err)
             });
           } catch (error) {
             console.error('Error in connection success handler:', error);
             Alert.alert('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการตั้งค่าการเชื่อมต่อ');
           }
         },
-        onFailure: (err:unknown) => {
+        onFailure: (err: unknown) => {
           console.error('MQTT Connection failed:', err);
           Alert.alert('การเชื่อมต่อล้มเหลว', 'ไม่สามารถเชื่อมต่อกับ MQTT broker ได้');
           handleReconnect();
@@ -125,7 +121,7 @@ export default function App() {
   }, [reconnectAttempts, setupMQTT]);
 
   // Connection Lost Handler
-  const onConnectionLost = useCallback((responseObject:unknown) => {
+  const onConnectionLost = useCallback((responseObject: any) => {
     if (responseObject.errorCode !== 0) {
       console.log("Connection lost:", responseObject.errorMessage);
       setIsConnected(false);
@@ -134,7 +130,7 @@ export default function App() {
   }, [handleReconnect]);
 
   // Message Arrived Handler
-  const onMessageArrived = useCallback((message:unknown) => {
+  const onMessageArrived = useCallback((message: any) => {
     try {
       const payload = JSON.parse(message.payloadString);
       
@@ -142,6 +138,7 @@ export default function App() {
         setIsFlameDetected(payload.flame_detected);
         if (payload.flame_detected) {
           setLastDetectionTime(new Date().toLocaleString());
+          setShowAlert(true);
           sendNotification().catch(error => {
             console.error('Failed to send notification:', error);
           });
@@ -155,7 +152,7 @@ export default function App() {
   }, []);
 
   // Send MQTT Message
-  const publishMessage = useCallback((topic, message) => {
+  const publishMessage = useCallback((topic: string, message: any) => {
     if (!mqttClient || !isConnected) {
       Alert.alert('ไม่สามารถส่งข้อความได้', 'ไม่มีการเชื่อมต่อกับเซิร์ฟเวอร์');
       return;
@@ -171,6 +168,7 @@ export default function App() {
     }
   }, [mqttClient, isConnected]);
 
+  // Initialize MQTT and Notifications
   useEffect(() => {
     setupMQTT();
     
@@ -246,58 +244,74 @@ export default function App() {
   }, [publishMessage]);
 
   return (
-    <View className="flex-1 bg-gray-100 p-5 pt-16">
-      <View className={`mb-4 px-4 py-2 rounded-lg ${isConnected ? 'bg-green-100' : 'bg-red-100'}`}>
-        <Text className={`text-sm ${isConnected ? 'text-green-800' : 'text-red-800'}`}>
-          {isConnected ? 'เชื่อมต่อกับระบบแล้ว' : 'ไม่มีการเชื่อมต่อ'}
-        </Text>
-      </View>
-
-      <View className="bg-white rounded-2xl shadow-lg p-6">
-        <View className="flex-row items-center mb-6">
-          <MaterialCommunityIcons 
-            name="fire-alert" 
-            size={40} 
-            color={isFlameDetected ? "#ff4444" : "#666"}
-          />
-          <Text className="text-2xl font-bold text-gray-800 ml-3">
-            ระบบตรวจจับเปลวไฟอัตโนมัติ
-          </Text>
-        </View>
-
-        <View className="flex-row justify-around mt-2">
-          <StatusIndicator
-            title="สถานะเซนเซอร์"
-            isActive={isFlameDetected}
-            activeText="ตรวจพบเปลวไฟ!"
-            inactiveText="ปกติ"
-            icon="fire"
-          />
-
-          <StatusIndicator
-            title="สถานะปั๊มน้ำ"
-            isActive={isPumpActive}
-            activeText="กำลังทำงาน"
-            inactiveText="หยุดทำงาน"
-            icon="water-pump"
-          />
-        </View>
-
-        {lastDetectionTime && (
-          <Text className="mt-6 text-center text-gray-600 text-sm">
-            ตรวจพบครั้งล่าสุด: {lastDetectionTime}
-          </Text>
-        )}
-      </View>
-
-      <TouchableOpacity 
-        className="bg-blue-500 p-4 rounded-xl mt-5 items-center"
-        onPress={handleTestSystem}
+    <LinearGradient
+      colors={['#0f172a', '#1e293b']}
+      className="flex-1"
+    >
+      <MotiView 
+        from={{ opacity: 0, translateY: 20 }}
+        animate={{ opacity: 1, translateY: 0 }}
+        transition={{ type: 'timing', duration: 500 }}
+        className="flex-1 p-5 pt-16"
       >
-        <Text className="text-white text-base font-medium">
-          ทดสอบระบบ
-        </Text>
-      </TouchableOpacity>
-    </View>
+        <ConnectionStatus isConnected={isConnected} />
+
+        <MotiView
+          from={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'timing', duration: 500, delay: 200 }}
+          className="bg-white/10 rounded-3xl p-6 backdrop-blur-xl shadow-2xl"
+        >
+          <Header isFlameDetected={isFlameDetected} />
+
+          <MotiView 
+            from={{ opacity: 0, translateY: 20 }}
+            animate={{ opacity: 1, translateY: 0 }}
+            transition={{ type: 'timing', duration: 500, delay: 400 }}
+            className="flex-row justify-around mt-2 mb-6"
+          >
+            <StatusIndicator
+              title="สถานะเซนเซอร์"
+              isActive={isFlameDetected}
+              activeText="ตรวจพบเปลวไฟ!"
+              inactiveText="ปกติ"
+              icon="fire"
+            />
+
+            <StatusIndicator
+              title="สถานะปั๊มน้ำ"
+              isActive={isPumpActive}
+              activeText="กำลังทำงาน"
+              inactiveText="หยุดทำงาน"
+              icon="water-pump"
+            />
+          </MotiView>
+
+          {lastDetectionTime && (
+            <MotiView
+              from={{ opacity: 0, translateY: 10 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{ type: 'timing', duration: 300 }}
+            >
+              <LastDetectionTime timestamp={lastDetectionTime} />
+            </MotiView>
+          )}
+        </MotiView>
+
+        <MotiView
+          from={{ opacity: 0, translateY: 20 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ type: 'timing', duration: 500, delay: 600 }}
+        >
+
+        </MotiView>
+      </MotiView>
+
+      <AlertModal
+        visible={showAlert}
+        onClose={() => setShowAlert(false)}
+        timestamp={lastDetectionTime || ''}
+      />
+    </LinearGradient>
   );
 }
